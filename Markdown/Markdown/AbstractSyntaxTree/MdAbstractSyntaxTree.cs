@@ -1,10 +1,11 @@
 using System.Collections.ObjectModel;
+using System.Text;
 
 namespace Markdown.AbstractSyntaxTree;
 
-public class MdAbstractSyntaxTree(ReadOnlyDictionary<TokenType, string> TokenConverters) : IAbstractSyntaxTree<TokenType>
+public class MdAbstractSyntaxTree : IAbstractSyntaxTree<TokenType>
 {
-    private struct Node
+    private class Node
     {
         public Node()
         {
@@ -18,20 +19,98 @@ public class MdAbstractSyntaxTree(ReadOnlyDictionary<TokenType, string> TokenCon
             Children = new List<Node>();
         }
         
-        public TokenType? TokenType;
-        public ReadOnlyMemory<char>? TokenValue;
-        public List<Node> Children;
+        public TokenType? TokenType { get; }
+        public ReadOnlyMemory<char>? TokenValue { get; }
+        public Node? Parent { get; private set; }
+        private List<Node> Children { get; }
+
+        public void AddChild(Node node)
+        {
+            node.Parent = this;
+            Children.Add(node);
+        }
+
+        public IEnumerable<Node> GetChildren() => Children;
     }
 
-    private Node _root = new();
+    private readonly ReadOnlyDictionary<TokenType, string> _tokenTags;
+    private readonly Node _root;
+    private Node _current;
+
+    public MdAbstractSyntaxTree(ReadOnlyDictionary<TokenType, string> tokenTags)
+    {
+        _tokenTags = tokenTags;
+        _root = new Node();
+        _current = _root;
+    }
     
     public void AddToken(TokenType tokenType, ReadOnlyMemory<char>? tokenValue = null)
     {
-        throw new NotImplementedException();
+        if (tokenType == TokenType.PlainText)
+        {
+            ArgumentExceptionHelpers.ThrowIfNull(tokenValue, "tokenValue must not be null");
+            _current.AddChild(new Node(tokenType, tokenValue));
+        }
+        else
+        {
+            var newNode = new Node(tokenType, null);
+            _current.AddChild(newNode);
+            _current = newNode;
+        }
+    }
+
+    public bool TryEndCurrentToken()
+    {
+        if (_current == _root)
+            return false;
+        _current = _current.Parent!;
+        return true;
+    }
+
+    public bool TryEndToken(TokenType tokenType)
+    {
+        var tokenNode = FindTokenNode(_current, tokenType);
+        if (tokenNode != null)
+        {
+            _current = tokenNode.Parent!;
+            return true;
+        }
+        
+        return false;
+    }
+
+    private Node? FindTokenNode(Node node, TokenType tokenType)
+    {
+        if (node == _root)
+            return null;
+        if (node.TokenType == tokenType)
+            return node;
+        
+        return FindTokenNode(node.Parent!, tokenType);
     }
 
     public string ToText()
     {
-        throw new NotImplementedException();
+        var sb = new StringBuilder();
+        ProcessChildren(_root, sb);
+        return sb.ToString();
+    }
+
+    private void ProcessChildren(Node node, StringBuilder sb)
+    {
+        foreach (var child in node.GetChildren())
+        {
+            if (child.TokenType == TokenType.PlainText)
+                sb.Append(child.TokenValue);
+            else
+                SurroundWithTag(_tokenTags[child.TokenType!.Value], child, sb);
+        }
+    }
+
+    private void SurroundWithTag(string tag, Node node, StringBuilder sb)
+    {
+        sb.Append($"<{tag}>");
+        ProcessChildren(node, sb);
+        sb.Append($"</{tag}>");
     }
 }
