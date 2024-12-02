@@ -30,7 +30,14 @@ public class MdAbstractSyntaxTree : IAbstractSyntaxTree<TokenType>
             Children.Add(node);
         }
 
-        public IEnumerable<Node> GetChildren() => Children;
+        public IEnumerable<Node> RemoveChildren()
+        {
+            var children = new List<Node>(GetChildren());
+            Children.Clear();
+            return children;
+        }
+
+        public IEnumerable<Node> GetChildren() => Children.AsReadOnly();
     }
 
     private readonly ReadOnlyDictionary<TokenType, string> _tokenTags;
@@ -44,49 +51,63 @@ public class MdAbstractSyntaxTree : IAbstractSyntaxTree<TokenType>
         _current = _root;
     }
     
-    public void AddToken(TokenType tokenType, ReadOnlyMemory<char>? tokenValue = null)
+    public void AddToken(TokenType tokenType, ReadOnlyMemory<char> tokenValue)
     {
+        ArgumentExceptionHelpers.ThrowIfNull(tokenValue, "tokenValue must not be null");
         if (tokenType == TokenType.PlainText)
         {
-            ArgumentExceptionHelpers.ThrowIfNull(tokenValue, "tokenValue must not be null");
             _current.AddChild(new Node(tokenType, tokenValue));
         }
         else
         {
-            var newNode = new Node(tokenType, null);
+            var newNode = new Node(tokenType, tokenValue);
             _current.AddChild(newNode);
             _current = newNode;
         }
     }
 
-    public bool TryEndCurrentToken()
-    {
-        if (_current == _root)
-            return false;
-        _current = _current.Parent!;
-        return true;
-    }
+    public bool HasTokenInContext(TokenType tokenType) => HasParent(tokenType, _current);
 
-    public bool TryEndToken(TokenType tokenType)
-    {
-        var tokenNode = FindTokenNode(_current, tokenType);
-        if (tokenNode != null)
-        {
-            _current = tokenNode.Parent!;
-            return true;
-        }
-        
-        return false;
-    }
-
-    private Node? FindTokenNode(Node node, TokenType tokenType)
+    private bool HasParent(TokenType tokenType, Node node)
     {
         if (node == _root)
-            return null;
+            return false;
         if (node.TokenType == tokenType)
-            return node;
-        
-        return FindTokenNode(node.Parent!, tokenType);
+            return true;
+        return HasParent(tokenType, node.Parent!);
+    }
+
+    public void EndToken(TokenType tokenType, ReadOnlyMemory<char>? tokenValue = null)
+    {
+        WalkUpToTheRoot(_current, tokenType, tokenValue);
+    }
+
+    private void WalkUpToTheRoot(Node node, TokenType tokenType, ReadOnlyMemory<char>? tokenValue)
+    {
+        if (node == _root)
+        {
+            AddTextToNodeAndMakeCurrent(node, tokenValue);
+        }
+        else if (node.TokenType == tokenType)
+        {
+            AddTextToNodeAndMakeCurrent(node, tokenValue);
+            _current = node.Parent!;
+        }
+        else
+        {
+            var parent = node.Parent!;
+            var children = node.RemoveChildren();
+            foreach (var child in children)
+                parent.AddChild(child);
+            WalkUpToTheRoot(parent, tokenType, tokenValue);
+        }
+    }
+
+    private void AddTextToNodeAndMakeCurrent(Node node, ReadOnlyMemory<char>? tokenValue)
+    {
+        _current = node;
+        if (tokenValue != null)
+            AddToken(TokenType.PlainText, tokenValue.Value);
     }
 
     public string ToText()
@@ -100,7 +121,7 @@ public class MdAbstractSyntaxTree : IAbstractSyntaxTree<TokenType>
     {
         foreach (var child in node.GetChildren())
         {
-            if (child.TokenType == TokenType.PlainText)
+            if (child.TokenType == TokenType.PlainText || !child.GetChildren().Any())
                 sb.Append(child.TokenValue);
             else
                 SurroundWithTag(_tokenTags[child.TokenType!.Value], child, sb);
