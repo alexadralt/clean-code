@@ -8,7 +8,7 @@ namespace Markdown.Tests;
 
 [TestFixture]
 [TestOf(typeof(IMd))]
-public class IMdTest
+public class IMdTests
 {
     private IMd _imd;
 
