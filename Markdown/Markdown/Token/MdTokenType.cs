@@ -1,6 +1,6 @@
 namespace Markdown;
 
-public enum TokenType
+public enum MdTokenType
 {
     PlainText,
     Italic,
