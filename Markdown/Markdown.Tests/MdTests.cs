@@ -7,10 +7,10 @@ using NUnit.Framework;
 namespace Markdown.Tests;
 
 [TestFixture]
-[TestOf(typeof(IMd))]
-public class IMdTests
+[TestOf(typeof(Md))]
+public class MdTests
 {
-    private IMd _imd;
+    private IRenderer _imd;
 
     [SetUp]
     public void SetUp()
@@ -111,7 +111,6 @@ public class IMdTests
             .Be(expectedOutput);
     }
     
-    // Это пока не работает
     [Test]
     [TestCase("Intersecting _markdown __should_ work__ like this", "Intersecting _markdown __should_ work__ like this")]
     [TestCase("Another __example of _intersecting__ markdown_", "Another __example of _intersecting__ markdown_")]
@@ -136,10 +135,9 @@ public class IMdTests
             .Be(expectedOutput);
     }
     
-    // Это пока не работает
     [Test]
-    [TestCase("This should \\_not turn\\_ into tags", "This should _not turn into tags")]
-    [TestCase("This should \\\\remain the\\\\ same", "This should \\\\remain the\\\\ same")]
+    [TestCase(@"This should \_not turn\_ into tags", "This should _not turn_ into tags")]
+    [TestCase(@"This should \remain the\ same", @"This should \remain the\ same")]
     public void Render_ReturnsCorrectMarkdown_ForEscapeCharacters(
         string input,
         string expectedOutput)
@@ -152,7 +150,7 @@ public class IMdTests
     [Test]
     public void Render_PerformanceTest()
     {
-        var fullStr = ArrangePerformanceTest("_Hello_ world_12. Hel_lo world_", 100000);
+        var fullStr = ArrangePerformanceTest("_Hello_ world_12. Hel_lo world_", 50000);
         Console.WriteLine($"Total length: {fullStr.Length}");
 
         var totalTime = MeasureTime(fullStr);

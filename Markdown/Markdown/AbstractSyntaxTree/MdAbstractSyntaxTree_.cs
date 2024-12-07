@@ -4,7 +4,7 @@ using Markdown.Token;
 
 namespace Markdown.AbstractSyntaxTree;
 
-public class MdAbstractSyntaxTree
+public class MdAbstractSyntaxTree_
 {
     public class Node
     {
@@ -43,7 +43,7 @@ public class MdAbstractSyntaxTree
     private readonly Node _root;
     private Node _current;
 
-    public MdAbstractSyntaxTree(ReadOnlyDictionary<MdTokenType, string> tokenTags)
+    public MdAbstractSyntaxTree_(ReadOnlyDictionary<MdTokenType, string> tokenTags)
     {
         _tokenTags = tokenTags;
         _root = new Node();

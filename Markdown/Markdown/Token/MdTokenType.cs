@@ -1,9 +1,13 @@
-namespace Markdown;
+namespace Markdown.Token;
 
 public enum MdTokenType
 {
     PlainText,
+    Document,
+    Line,
     Italic,
     Bold,
-    Heading
+    Heading,
+    UnorderedList,
+    UnorderedListItem,
 }

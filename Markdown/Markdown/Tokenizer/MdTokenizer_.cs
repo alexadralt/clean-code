@@ -4,7 +4,7 @@ using Markdown.Token;
 
 namespace Markdown.Tokenizer;
 
-public class MdTokenizer(
+public class MdTokenizer_(
     ReadOnlyDictionary<string, MdTokenType> StartTokenAliases,
     ReadOnlyDictionary<string, MdTokenType> EndTokenAliases
     )

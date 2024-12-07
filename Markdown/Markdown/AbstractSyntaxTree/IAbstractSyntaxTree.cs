@@ -1,10 +1,11 @@
+using Markdown.NodeView;
+using Markdown.SyntaxRules;
+using Markdown.Traversable;
+
 namespace Markdown.AbstractSyntaxTree;
 
-public interface IAbstractSyntaxTree<TTokenType>
-where TTokenType : Enum
+public interface IAbstractSyntaxTree<TTokenType> : ITraversable<BaseNodeView<TTokenType>>
 {
-    public void AddToken(TTokenType tokenType, ReadOnlyMemory<char> tokenValue);
-    public bool HasTokenInContext(TTokenType tokenType);
-    public void EndToken(TTokenType tokenType, ReadOnlyMemory<char>? tokenValue = null);
-    public string ToText();
+    public IAbstractSyntaxTree<TTokenType> AddRule(ISyntaxRule<TTokenType> rule);
+    public IAbstractSyntaxTree<TTokenType> ApplyRules();
 }
