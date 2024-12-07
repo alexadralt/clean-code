@@ -20,6 +20,13 @@ public class MdAbstractSyntaxTree : IAbstractSyntaxTree<MdTokenType>
             Parent = parent;
             Children = new List<Node>();
         }
+
+        public Node(AbstractSyntaxTreeNodeView<MdTokenType> nodeView)
+        {
+            Type = nodeView.TokenType;
+            Text = nodeView.Text;
+            Children = new List<Node>();
+        }
         
         public ReadOnlyMemory<char> Text { get; }
         public MdTokenType Type { get; }
@@ -40,7 +47,8 @@ public class MdAbstractSyntaxTree : IAbstractSyntaxTree<MdTokenType>
     }
 
     private MdAbstractSyntaxTree(
-        MdAbstractSyntaxTree tree, ISyntaxRule<MdTokenType> rule)
+        MdAbstractSyntaxTree tree,
+        ISyntaxRule<MdTokenType> rule)
     {
         _root = tree._root;
         _current = _root;
@@ -114,21 +122,44 @@ public class MdAbstractSyntaxTree : IAbstractSyntaxTree<MdTokenType>
     public IAbstractSyntaxTree<MdTokenType> ApplyRules()
     {
         var newSyntaxTree = new MdAbstractSyntaxTree();
-        foreach (var baseView in Traverse())
-        {
-            if (baseView is AbstractSyntaxTreeNodeView<MdTokenType> nodeView
-                && nodeView.TokenType != MdTokenType.Document)
-            {
-                var parentNodeView = new AbstractSyntaxTreeNodeView<MdTokenType>(
-                    newSyntaxTree._current.Text, newSyntaxTree._current.Type);
-                foreach (var rule in _rules)
-                {
-                    var result = rule.Apply(nodeView, parentNodeView);
-                    
-                }
-            }
-        }
-        
+        ProcessChildNodes(_root, newSyntaxTree);
         return newSyntaxTree;
+    }
+
+    private void ProcessChildNodes(Node node, MdAbstractSyntaxTree newSyntaxTree)
+    {
+        var parentNodeView = new AbstractSyntaxTreeNodeView<MdTokenType>(node.Text, node.Type);
+        
+        for (var i = 0; i < node.Children.Count; i++)
+        {
+            var childNode = node.Children[i];
+            var childNodeView = new AbstractSyntaxTreeNodeView<MdTokenType>(childNode.Text, childNode.Type);
+            var leftNeighbourView = i > 0
+                ? new AbstractSyntaxTreeNodeView<MdTokenType>(node.Children[i - 1].Text, node.Children[i - 1].Type)
+                : null;
+            var rightNeighbourView = i < node.Children.Count - 1
+                ? new AbstractSyntaxTreeNodeView<MdTokenType>(node.Children[i + 1].Text, node.Children[i + 1].Type)
+                : null;
+            var result = childNodeView;
+            var shouldCopy = false;
+            foreach (var rule in _rules)
+                (result, shouldCopy) = rule.Apply(result, parentNodeView, leftNeighbourView, rightNeighbourView);
+            
+            var newNode = new Node(result);
+            newSyntaxTree._current.Children.Add(newNode);
+            newNode.Parent = newSyntaxTree._current;
+            
+            if (newNode.Type != MdTokenType.PlainText && newNode.Type != MdTokenType.Document)
+                newSyntaxTree._current = newNode;
+            
+            if (childNode.Children.Count > 0)
+                ProcessChildNodes(childNode, newSyntaxTree);
+            
+            if (newNode.Parent.Type != MdTokenType.PlainText && newNode.Parent.Type != MdTokenType.Document)
+                newSyntaxTree._current = newNode.Parent;
+            
+            if (shouldCopy)
+                newSyntaxTree._current.Children.Add(newNode);
+        }
     }
 }

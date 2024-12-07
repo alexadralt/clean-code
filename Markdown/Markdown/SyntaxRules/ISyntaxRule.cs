@@ -4,7 +4,9 @@ namespace Markdown.SyntaxRules;
 
 public interface ISyntaxRule<TTokenType>
 {
-    public AbstractSyntaxTreeNodeView<TTokenType> Apply(
+    public (AbstractSyntaxTreeNodeView<TTokenType> result, bool shouldCopy) Apply(
         AbstractSyntaxTreeNodeView<TTokenType> node,
-        AbstractSyntaxTreeNodeView<TTokenType> parentNode);
+        AbstractSyntaxTreeNodeView<TTokenType> parentNode,
+        AbstractSyntaxTreeNodeView<TTokenType>? leftNeighbour,
+        AbstractSyntaxTreeNodeView<TTokenType>? rightNeighbour);
 }

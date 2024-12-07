@@ -1,7 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
 using FluentAssertions;
+using Markdown.Parser;
+using Markdown.ParseTree;
+using Markdown.Token;
+using Markdown.Tokenizer;
 using NUnit.Framework;
 
 namespace Markdown.Tests;
@@ -10,12 +15,23 @@ namespace Markdown.Tests;
 [TestOf(typeof(Md))]
 public class MdTests
 {
-    private IRenderer _imd;
+    private IRenderer _md;
 
     [SetUp]
     public void SetUp()
     {
-        _imd = new Md();
+        var tokenAliases = new Dictionary<string, MdTokenType>();
+        tokenAliases.Add("_", MdTokenType.Italic);
+        tokenAliases.Add("__", MdTokenType.Bold);
+        tokenAliases.Add("# ", MdTokenType.Heading);
+        tokenAliases.Add("\n", MdTokenType.Line);
+
+        var tokenTags = new Dictionary<MdTokenType, string>();
+        tokenTags.Add(MdTokenType.Italic, "em");
+        tokenTags.Add(MdTokenType.Bold, "strong");
+        tokenTags.Add(MdTokenType.Heading, "h1");
+
+        _md = new Md(tokenTags, new MdTokenizer(tokenAliases, '\\'), new MdParser(new MdParseTree()));
     }
     
     [Test]
@@ -27,7 +43,7 @@ public class MdTests
         string input,
         string expectedOutput)
     {
-        _imd.Render(input)
+        _md.Render(input)
             .Should()
             .Be(expectedOutput);
     }
@@ -39,7 +55,7 @@ public class MdTests
         string input,
         string expectedOutput)
     {
-        _imd.Render(input)
+        _md.Render(input)
             .Should()
             .Be(expectedOutput);
     }
@@ -53,7 +69,7 @@ public class MdTests
         string input,
         string expectedOutput)
     {
-        _imd.Render(input)
+        _md.Render(input)
             .Should()
             .Be(expectedOutput);
     }
@@ -69,7 +85,7 @@ public class MdTests
         string input,
         string expectedOutput)
     {
-        _imd.Render(input)
+        _md.Render(input)
             .Should()
             .Be(expectedOutput);
     }
@@ -82,7 +98,7 @@ public class MdTests
         string input,
         string expectedOutput)
     {
-        _imd.Render(input)
+        _md.Render(input)
             .Should()
             .Be(expectedOutput);
     }
@@ -94,7 +110,7 @@ public class MdTests
         string input,
         string expectedOutput)
     {
-        _imd.Render(input)
+        _md.Render(input)
             .Should()
             .Be(expectedOutput);
     }
@@ -106,7 +122,7 @@ public class MdTests
         string input,
         string expectedOutput)
     {
-        _imd.Render(input)
+        _md.Render(input)
             .Should()
             .Be(expectedOutput);
     }
@@ -118,7 +134,7 @@ public class MdTests
         string input,
         string expectedOutput)
     {
-        _imd.Render(input)
+        _md.Render(input)
             .Should()
             .Be(expectedOutput);
     }
@@ -130,7 +146,7 @@ public class MdTests
         string input,
         string expectedOutput)
     {
-        _imd.Render(input)
+        _md.Render(input)
             .Should()
             .Be(expectedOutput);
     }
@@ -142,7 +158,7 @@ public class MdTests
         string input,
         string expectedOutput)
     {
-        _imd.Render(input)
+        _md.Render(input)
             .Should()
             .Be(expectedOutput);
     }
@@ -165,7 +181,7 @@ public class MdTests
     {
         var sw = new Stopwatch();
         sw.Start();
-        _imd.Render(fullStr);
+        _md.Render(fullStr);
         sw.Stop();
         return sw.ElapsedMilliseconds;
     }
