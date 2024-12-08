@@ -1,15 +1,11 @@
-using System.Collections.ObjectModel;
 using System.Runtime.InteropServices;
-using Markdown.AbstractSyntaxTree;
+using Markdown.Token;
 
 namespace Markdown.Tokenizer;
 
-public class MdTokenizer(
-    ReadOnlyDictionary<string, TokenType> StartTokenAliases,
-    ReadOnlyDictionary<string, TokenType> EndTokenAliases
-    ) : ITokenizer<TokenType>
+public class MdTokenizer(Dictionary<string, MdTokenType> tokenAliases, char escapeCharacter) : ITokenizer<MdTokenType, MdToken>
 {
-    public IAbstractSyntaxTree<TokenType> Tokenize(IAbstractSyntaxTree<TokenType> tree, ReadOnlyMemory<char> input)
+    public IEnumerable<MdToken> Tokenize(ReadOnlyMemory<char> input)
     {
         ArgumentExceptionHelpers.ThrowIfFalse(
             MemoryMarshal.TryGetString(input, out var str, out var start, out var length),
@@ -18,136 +14,104 @@ public class MdTokenizer(
         var foundPlainText = false;
         var plainTextStart = 0;
         var increment = 1;
-        for (var i = start; i < length; )
+        for (var i = start; i < start + length; )
         {
-            if (TryMatchTokenAliases(str!, i, tree, out var tokenType, out var tokenAlias, out var endToken))
+            if (escapeCharacter == str![i] && i + 1 < str.Length)
+            {
+                if (TryMatchTokenAliases(str, i + 1, out _, out _, out _))
+                {
+                    increment = 2;
+                    yield return new MdToken(MdTokenType.PlainText, MdTokenBehaviour.Undefined,
+                        input.Slice(plainTextStart, i - plainTextStart));
+                    yield return new MdToken(MdTokenType.PlainText, MdTokenBehaviour.Undefined, input.Slice(i + 1, 1));
+                    foundPlainText = false;
+                }
+            }
+            else if (TryMatchTokenAliases(str, i, out var tokenType, out var tokenAlias, out var tokenBehaviour))
             {
                 increment = tokenAlias.Length;
                 
-                if (endToken && tree.HasTokenInContext(tokenType))
-                {
-                    increment = tokenAlias.Length;
-                    if (foundPlainText)
-                        tree.EndToken(tokenType, input.Slice(plainTextStart, i - plainTextStart));
-                    else
-                    {
-                        tree.EndToken(tokenType);
-                        tree.AddToken(TokenType.PlainText, input.Slice(i, tokenAlias.Length));
-                    }
-                    foundPlainText = false;
-                }
-                else if (!endToken && !tree.HasTokenInContext(tokenType))
-                {
-                    if (tokenType != TokenType.Bold || !tree.HasTokenInContext(TokenType.Italic)) // двойное выделение не может быть внутри одинарного
-                    {
-                        if (foundPlainText)
-                            tree.AddToken(TokenType.PlainText, input.Slice(plainTextStart, i - plainTextStart));
-                        tree.AddToken(tokenType, input.Slice(i, tokenAlias.Length));
-                        foundPlainText = false;
-                    }
-                }
-                else
-                    UpdatePlainTextState(ref foundPlainText, ref i, ref plainTextStart);
+                if (foundPlainText)
+                    yield return new MdToken(MdTokenType.PlainText, MdTokenBehaviour.Undefined,
+                        input.Slice(plainTextStart, i - plainTextStart));
+                
+                yield return new MdToken(tokenType, tokenBehaviour, input.Slice(i, tokenAlias.Length));
+                
+                foundPlainText = false;
             }
             else
-                UpdatePlainTextState(ref foundPlainText, ref i, ref plainTextStart);
+            {
+                if (!foundPlainText)
+                    plainTextStart = i;
+                foundPlainText = true;
+            }
             
             i += increment;
             if (increment > 1)
                 increment = 1;
         }
         
-        tree.EndToken(TokenType.Heading,
-            foundPlainText ? input.Slice(plainTextStart, str!.Length - plainTextStart) : null);
-        
-        return tree;
-    }
-
-    private void UpdatePlainTextState(ref bool foundPlainText, ref int index, ref int plainTextStart)
-    {
-        if (!foundPlainText)
-            plainTextStart = index;
-        foundPlainText = true;
+        if (foundPlainText)
+            yield return new MdToken(MdTokenType.PlainText, MdTokenBehaviour.Undefined,
+                input.Slice(plainTextStart, str!.Length - plainTextStart));
     }
 
     private bool TryMatchTokenAliases(
         string input,
         int index,
-        IAbstractSyntaxTree<TokenType> tree,
-        out TokenType tokenType,
+        out MdTokenType mdTokenType,
         out string tokenAlias,
-        out bool endToken)
+        out MdTokenBehaviour tokenBehaviour)
     {
-        var matchedEndToken = false;
-        var mathcedStartToken = false;
+        var matchedClosingToken = false;
+        var mathcedOpeningToken = false;
         
-        var startTokenType = default(TokenType);
-        var endTokenType = default(TokenType);
+        var openingTokenType = default(MdTokenType);
+        var closingTokenType = default(MdTokenType);
 
-        endToken = true;
-        if (TryMatchTokenAliases(input, index, endToken, out var endTokenAlias))
-            matchedEndToken = EndTokenAliases.TryGetValue(endTokenAlias, out endTokenType);
+        if (TryMatchTokenAliases(input, index, true, out var closingTokenAlias))
+            matchedClosingToken = tokenAliases.TryGetValue(closingTokenAlias, out closingTokenType);
         
-        endToken = false;
-        if (TryMatchTokenAliases(input, index, endToken, out var startTokenAlias)
-            && EnsureNotInSeparatedWords(input, index, startTokenAlias))
-            mathcedStartToken = StartTokenAliases.TryGetValue(startTokenAlias, out startTokenType);
+        if (TryMatchTokenAliases(input, index, false, out var openingTokenAlias))
+            mathcedOpeningToken = tokenAliases.TryGetValue(openingTokenAlias, out openingTokenType);
 
-        if (matchedEndToken && mathcedStartToken)
+        if (mathcedOpeningToken && matchedClosingToken)
         {
-            if (startTokenAlias.Length > endTokenAlias.Length)
-            {
-                endToken = false;
-                tokenAlias = startTokenAlias;
-                tokenType = startTokenType;
-                return true;
-            }
-
-            if (startTokenAlias.Length == endTokenAlias.Length)
-            {
-                // в этом случае startTokenType и endTokenType должны совпадать
-                if (tree.HasTokenInContext(startTokenType))
-                {
-                    endToken = true;
-                    tokenAlias = endTokenAlias;
-                    tokenType = endTokenType;
-                    return true;
-                }
-
-                endToken = false;
-                tokenAlias = startTokenAlias;
-                tokenType = startTokenType;
-                return true;
-            }
-
-            endToken = true;
-            tokenAlias = endTokenAlias;
-            tokenType = endTokenType;
+            var (alias, type, behaviour) = openingTokenAlias.Length > closingTokenAlias.Length
+                ? (openingTokenAlias, openingTokenType, MdTokenBehaviour.Opening)
+                : (closingTokenAlias, closingTokenType, MdTokenBehaviour.Closing);
+            
+            if (IsInsideAWord(input, index, alias))
+                tokenBehaviour = MdTokenBehaviour.InsideAWord;
+            else
+                tokenBehaviour = behaviour;
+            tokenAlias = alias;
+            mdTokenType = type;
             return true;
         }
 
-        if (matchedEndToken)
+        if (mathcedOpeningToken)
         {
-            endToken = true;
-            tokenAlias = endTokenAlias;
-            tokenType = endTokenType;
+            tokenBehaviour = MdTokenBehaviour.Opening;
+            tokenAlias = openingTokenAlias;
+            mdTokenType = openingTokenType;
             return true;
         }
 
-        if (mathcedStartToken)
+        if (matchedClosingToken)
         {
-            endToken = false;
-            tokenAlias = startTokenAlias;
-            tokenType = startTokenType;
+            tokenBehaviour = MdTokenBehaviour.Closing;
+            tokenAlias = closingTokenAlias;
+            mdTokenType = closingTokenType;
             return true;
         }
-
-        endToken = default;
-        tokenAlias = default;
-        tokenType = default;
+        
+        tokenBehaviour = MdTokenBehaviour.Undefined;
+        tokenAlias = String.Empty;
+        mdTokenType = MdTokenType.PlainText;
         return false;
     }
-
+    
     private bool TryMatchTokenAliases(
         string input,
         int index,
@@ -155,7 +119,6 @@ public class MdTokenizer(
         out string tokenAlias)
     {
         tokenAlias = String.Empty;
-        var tokenAliases = endToken ? EndTokenAliases : StartTokenAliases;
         foreach (var alias in tokenAliases.Keys)
         {
             if (TryMatchAlias(input, index, alias, endToken) && tokenAlias.Length < alias.Length)
@@ -164,70 +127,34 @@ public class MdTokenizer(
 
         return !String.IsNullOrEmpty(tokenAlias);
     }
-
-    /*
-     * для случаев типа: "сл_ово дру_гое слово", когда подчерки должны оставаться подчерками
-     */
-    private bool EnsureNotInSeparatedWords(string input, int index, string alias)
-    {
-        if (!IsInsideAWord(input, index, alias))
-            return true;
-        
-        var i = index + alias.Length;
-        while (i < input.Length && !IsWordDelimiter(input[i]))
-        {
-            if (TryMatchAlias(input, i, alias, true))
-                return true;
-            i++;
-        }
-        
-        return false;
-    }
-
+    
     private bool TryMatchAlias(string input, int index, string alias, bool isEndToken)
     {
         return TryMatchPattern(input, index, alias)
-               && (!IsBoldOrItalicAlias(alias, isEndToken)
-                   || (IsInsideAWord(input, index, alias)
-                       && !IsSurroundedByNumbers(input, index, alias))
-                   || HasAWhiteSpaceNearIt(input, index, alias, isEndToken));
+               && HasANonDelimiterCharacterNearIt(input, index, alias, isEndToken);
     }
 
     private bool IsWordDelimiter(char c)
     {
-        return c is ' ' or '\t' or '\n' or '\r';
+        return c is ' ' or '\t' or '\n' or '\r' or ',' or '.'
+            or '!' or '?';
     }
 
     private bool IsInsideAWord(string input, int index, string alias)
     {
-        var trueForLeftEdge = index - 1 >= 0 && input[index - 1] != ' ';
+        var trueForLeftEdge = index - 1 >= 0 && !IsWordDelimiter(input[index - 1]);
         var trueForRightEdge = index + alias.Length < input.Length
-                               && input[index + alias.Length] != ' ';
+                               && !IsWordDelimiter(input[index + alias.Length]);
         return trueForLeftEdge && trueForRightEdge;
     }
 
-    private bool HasAWhiteSpaceNearIt(string input, int index, string alias, bool isEndToken)
+    private bool HasANonDelimiterCharacterNearIt(string input, int index, string alias, bool closingToken)
     {
-        var trueForLeftEdge = index - 1 < 0 || input[index - 1] == ' ';
-        var trueForRightEdge = index + alias.Length >= input.Length
-                               || input[index + alias.Length] == ' ';
-        return isEndToken ? trueForRightEdge : trueForLeftEdge;
-    }
-
-    private bool IsSurroundedByNumbers(string input, int index, string alias)
-    {
-        var trueForLeftEdge = index - 1 >= 0
-                              && int.TryParse(input[index - 1].ToString(), out _);
-        var trueForRightEdge = index + alias.Length < input.Length
-                               && int.TryParse(input[index + alias.Length].ToString(), out _);
-        return trueForLeftEdge || trueForRightEdge;
-    }
-
-    private bool IsBoldOrItalicAlias(string alias, bool isEndToken)
-    {
-        var tokenAliases = isEndToken ? EndTokenAliases : StartTokenAliases;
-        return tokenAliases[alias] == TokenType.Bold
-               || tokenAliases[alias] == TokenType.Italic;
+        var trueForOpening = index + alias.Length < input.Length
+                             && !IsWordDelimiter(input[index + alias.Length]);
+        var trueForClosing = index - 1 >= 0
+                             && !IsWordDelimiter(input[index - 1]);
+        return closingToken ? trueForClosing : trueForOpening;
     }
 
     private bool TryMatchPattern(string input, int index, string pattern)

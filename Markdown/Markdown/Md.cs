@@ -1,40 +1,53 @@
-using System.Collections.ObjectModel;
+using System.Text;
 using Markdown.AbstractSyntaxTree;
+using Markdown.NodeView;
+using Markdown.Parser;
+using Markdown.SyntaxRules;
+using Markdown.Token;
 using Markdown.Tokenizer;
 
 namespace Markdown;
 
-public class Md : IMd
+public class Md(
+    Dictionary<MdTokenType, string> tokenTags,
+    ITokenizer<MdTokenType, MdToken> tokenizer,
+    IParser<MdTokenType, MdToken> parser,
+    ISyntaxRule<MdTokenType>[] syntaxRules) : IRenderer
 {
-    private readonly ReadOnlyDictionary<string, TokenType> _tokenAliases;
-    private readonly ReadOnlyDictionary<string, TokenType> _endTokenAliases;
-    private readonly ReadOnlyDictionary<TokenType, string> _tokenTags;
-
-    public Md()
-    {
-        var tokenAliases = new Dictionary<string, TokenType>();
-        tokenAliases.Add("_", TokenType.Italic);
-        tokenAliases.Add("__", TokenType.Bold);
-        tokenAliases.Add("# ", TokenType.Heading);
-        _tokenAliases = tokenAliases.AsReadOnly();
-        
-        var endTokenAliases = new Dictionary<string, TokenType>();
-        endTokenAliases.Add("_", TokenType.Italic);
-        endTokenAliases.Add("__", TokenType.Bold);
-        endTokenAliases.Add("\n", TokenType.Heading);
-        _endTokenAliases = endTokenAliases.AsReadOnly();
-
-        var tokenTags = new Dictionary<TokenType, string>();
-        tokenTags.Add(TokenType.Italic, "em");
-        tokenTags.Add(TokenType.Bold, "strong");
-        tokenTags.Add(TokenType.Heading, "h1");
-        _tokenTags = tokenTags.AsReadOnly();
-    }
-    
     public string Render(string input)
     {
-        var tokenizer = new MdTokenizer(_tokenAliases, _endTokenAliases);
-        var syntaxTree = tokenizer.Tokenize(new MdAbstractSyntaxTree(_tokenTags), input.AsMemory());
-        return syntaxTree.ToText();
+        var tokens = tokenizer.Tokenize(input.AsMemory());
+        var parseTree = parser.Parse(tokens);
+        var syntaxTree = MdAbstractSyntaxTree.FromParseTree(parseTree);
+
+        foreach (var syntaxRule in syntaxRules)
+            syntaxTree.AddRule(syntaxRule);
+        
+        return syntaxTree
+            .ApplyRules()
+            .Traverse()
+            .Aggregate(new StringBuilder(),
+                (sb, node) => ProcessNode(node, sb))
+            .ToString();
+    }
+
+    private StringBuilder ProcessNode(BaseNodeView<MdTokenType>? node, StringBuilder sb)
+    {
+        if (node is AbstractSyntaxTreeNodeView<MdTokenType> nodeView)
+        {
+            if (nodeView.TokenType is MdTokenType.PlainText or MdTokenType.Document or MdTokenType.Line)
+                sb.Append(nodeView.Text);
+            else
+                sb.Append($"<{tokenTags[nodeView.TokenType]}>");
+        }
+        else if (node is ViewEnd<MdTokenType> viewEnd)
+        {
+            if (viewEnd.TokenType is not (MdTokenType.PlainText or MdTokenType.Document or MdTokenType.Line))
+            {
+                sb.Append($"</{tokenTags[viewEnd.TokenType]}>");
+            }
+        }
+
+        return sb;
     }
 }

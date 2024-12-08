@@ -1,137 +1,122 @@
-using System.Collections.ObjectModel;
-using System.Text;
+using System.Collections.Immutable;
+using Markdown.NodeView;
+using Markdown.ParseTree;
+using Markdown.SyntaxRules;
+using Markdown.Token;
 
 namespace Markdown.AbstractSyntaxTree;
 
-public class MdAbstractSyntaxTree : IAbstractSyntaxTree<TokenType>
+public class MdAbstractSyntaxTree : IAbstractSyntaxTree<MdTokenType>
 {
-    private class Node
+    private class Node : INodeView<MdTokenType>
     {
-        public Node()
+        public Node(
+            MdTokenType type,
+            ReadOnlyMemory<char>? text = null,
+            Node? parent = null,
+            bool insideWord = false)
         {
-            Children = new List<Node>();
-        }
-
-        public Node(TokenType tokenType, ReadOnlyMemory<char>? tokenValue)
-        {
-            TokenType = tokenType;
-            TokenValue = tokenValue;
-            Children = new List<Node>();
+            Type = type;
+            Text = text ?? ReadOnlyMemory<char>.Empty;
+            Parent = parent;
+            Children = new List<INodeView<MdTokenType>>();
+            InsideWord = insideWord;
         }
         
-        public TokenType? TokenType { get; }
-        public ReadOnlyMemory<char>? TokenValue { get; }
-        public Node? Parent { get; private set; }
-        private List<Node> Children { get; }
-
-        public void AddChild(Node node)
-        {
-            node.Parent = this;
-            Children.Add(node);
-        }
-
-        public IEnumerable<Node> RemoveChildren()
-        {
-            var children = new List<Node>(GetChildren());
-            Children.Clear();
-            return children;
-        }
-
-        public IEnumerable<Node> GetChildren() => Children.AsReadOnly();
+        public ReadOnlyMemory<char> Text { get; set; }
+        public MdTokenType Type { get; set; }
+        public bool InsideWord { get; set; }
+        public List<INodeView<MdTokenType>> Children { get; set; }
+        public INodeView<MdTokenType>? Parent { get; set; }
     }
 
-    private readonly ReadOnlyDictionary<TokenType, string> _tokenTags;
-    private readonly Node _root;
+    private Node _root;
     private Node _current;
 
-    public MdAbstractSyntaxTree(ReadOnlyDictionary<TokenType, string> tokenTags)
+    private ImmutableList<ISyntaxRule<MdTokenType>> _rules;
+    
+    private MdAbstractSyntaxTree()
     {
-        _tokenTags = tokenTags;
-        _root = new Node();
+        _root = new Node(MdTokenType.Document);
         _current = _root;
+        _rules = ImmutableList<ISyntaxRule<MdTokenType>>.Empty;
     }
     
-    public void AddToken(TokenType tokenType, ReadOnlyMemory<char> tokenValue)
+    public static MdAbstractSyntaxTree FromParseTree(IParseTree<MdTokenType> parseTree)
     {
-        ArgumentExceptionHelpers.ThrowIfNull(tokenValue, "tokenValue must not be null");
-        if (tokenType == TokenType.PlainText)
+        var syntaxTree = new MdAbstractSyntaxTree();
+        foreach (var baseView in parseTree.Traverse())
         {
-            _current.AddChild(new Node(tokenType, tokenValue));
-        }
-        else
-        {
-            var newNode = new Node(tokenType, tokenValue);
-            _current.AddChild(newNode);
-            _current = newNode;
-        }
-    }
-
-    public bool HasTokenInContext(TokenType tokenType) => HasParent(tokenType, _current);
-
-    private bool HasParent(TokenType tokenType, Node node)
-    {
-        if (node == _root)
-            return false;
-        if (node.TokenType == tokenType)
-            return true;
-        return HasParent(tokenType, node.Parent!);
-    }
-
-    public void EndToken(TokenType tokenType, ReadOnlyMemory<char>? tokenValue = null)
-    {
-        WalkUpToTheRoot(_current, tokenType, tokenValue);
-    }
-
-    private void WalkUpToTheRoot(Node node, TokenType tokenType, ReadOnlyMemory<char>? tokenValue)
-    {
-        if (node == _root)
-        {
-            AddTextToNodeAndMakeCurrent(node, tokenValue);
-        }
-        else if (node.TokenType == tokenType)
-        {
-            AddTextToNodeAndMakeCurrent(node, tokenValue);
-            _current = node.Parent!;
-        }
-        else
-        {
-            var parent = node.Parent!;
-            var children = node.RemoveChildren();
-            foreach (var child in children)
-                parent.AddChild(child);
-            WalkUpToTheRoot(parent, tokenType, tokenValue);
-        }
-    }
-
-    private void AddTextToNodeAndMakeCurrent(Node node, ReadOnlyMemory<char>? tokenValue)
-    {
-        _current = node;
-        if (tokenValue != null)
-            AddToken(TokenType.PlainText, tokenValue.Value);
-    }
-
-    public string ToText()
-    {
-        var sb = new StringBuilder();
-        ProcessChildren(_root, sb);
-        return sb.ToString();
-    }
-
-    private void ProcessChildren(Node node, StringBuilder sb)
-    {
-        foreach (var child in node.GetChildren())
-        {
-            if (child.TokenType == TokenType.PlainText || !child.GetChildren().Any())
-                sb.Append(child.TokenValue);
+            if (baseView is ParseTreeNodeView<MdTokenType> nodeView)
+            {
+                if (nodeView.TokenType != MdTokenType.Document)
+                {
+                    if (nodeView.Complete)
+                    {
+                        var newNode = new Node(
+                            nodeView.TokenType, nodeView.Text, syntaxTree._current, nodeView.insideWord);
+                        if (nodeView.TokenType != MdTokenType.PlainText)
+                            syntaxTree.AddNode(newNode);
+                        else
+                            syntaxTree._current.Children.Add(newNode);
+                    }
+                    else
+                    {
+                        var newNode = new Node(MdTokenType.PlainText, nodeView.Text, syntaxTree._current);
+                        syntaxTree._current.Children.Add(newNode);
+                    }
+                }
+            }
+            else if (baseView is ViewEnd<MdTokenType>)
+                syntaxTree.EndCurrentNode();
             else
-                SurroundWithTag(_tokenTags[child.TokenType!.Value], child, sb);
+                throw new InvalidOperationException("Unexpected node type");
         }
+        return syntaxTree;
     }
 
-    private void SurroundWithTag(string tag, Node node, StringBuilder sb)
+    private void AddNode(Node node)
     {
-        sb.Append($"<{tag}>");
-        ProcessChildren(node, sb);
-        sb.Append($"</{tag}>");
+        _current.Children.Add(node);
+        _current = node;
+    }
+
+    private void EndCurrentNode()
+    {
+        if (_current != _root)
+            _current = (Node) _current.Parent!;
+    }
+    
+    public IEnumerable<BaseNodeView<MdTokenType>> Traverse()
+    {
+        return Traverse(_root);
+    }
+    
+    private static IEnumerable<BaseNodeView<MdTokenType>> Traverse(INodeView<MdTokenType> node)
+    {
+        yield return new AbstractSyntaxTreeNodeView<MdTokenType>(node.Text, node.Type);
+        var childNodes = node.Children.SelectMany(Traverse).ToList();
+        foreach (var childNode in childNodes)
+            yield return childNode;
+        if (childNodes.Count > 0)
+            yield return new ViewEnd<MdTokenType>(node.Type);
+    }
+
+    public IAbstractSyntaxTree<MdTokenType> AddRule(ISyntaxRule<MdTokenType> rule)
+    {
+        _rules = _rules.Add(rule);
+        return this;
+    }
+
+    public IAbstractSyntaxTree<MdTokenType> ApplyRules()
+    {
+        INodeView<MdTokenType> syntaxTree = _root;
+        syntaxTree = _rules
+            .Aggregate(syntaxTree,
+                (current, rule) => rule.Apply(current));
+        _root = (Node) syntaxTree;
+        _current = _root;
+        _rules = ImmutableList<ISyntaxRule<MdTokenType>>.Empty;
+        return this;
     }
 }
