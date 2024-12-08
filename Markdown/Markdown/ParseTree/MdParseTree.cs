@@ -9,6 +9,7 @@ public class MdParseTree : IParseTree<MdTokenType>
     {
         public Node(MdTokenType type,
             bool complete = false,
+            bool insideWord = false,
             ReadOnlyMemory<char>? text = null,
             Node? parent = null
             )
@@ -16,6 +17,7 @@ public class MdParseTree : IParseTree<MdTokenType>
             Type = type;
             Children = new List<Node>();
             Complete = complete;
+            InsideWord = insideWord;
             Text = text ?? ReadOnlyMemory<char>.Empty;
             Parent = parent;
         }
@@ -23,6 +25,7 @@ public class MdParseTree : IParseTree<MdTokenType>
         public ReadOnlyMemory<char> Text { get; set; }
         public MdTokenType Type { get; set; }
         public bool Complete { get; set; }
+        public bool InsideWord { get; set; }
         public List<Node> Children { get; set; }
         public Node? Parent { get; set; }
     }
@@ -37,11 +40,11 @@ public class MdParseTree : IParseTree<MdTokenType>
     private Node _current;
 
     public ParseTreeNodeView<MdTokenType> CurrentToken =>
-        new(_current.Text, _current.Type, _current.Children.Count == 0, _current.Complete);
+        new(_current.Text, _current.Type, _current.Children.Count == 0, _current.Complete, _current.InsideWord);
 
-    public void OpenToken(MdTokenType tokenType, ReadOnlyMemory<char> text)
+    public void OpenToken(MdTokenType tokenType, ReadOnlyMemory<char> text, bool insideWord = false)
     {
-        var newNode = new Node(tokenType, false, text, _current);
+        var newNode = new Node(tokenType, false, insideWord, text, _current);
         _current.Children.Add(newNode);
         _current = newNode;
     }
@@ -61,7 +64,8 @@ public class MdParseTree : IParseTree<MdTokenType>
 
     private static IEnumerable<BaseNodeView<MdTokenType>> Traverse(Node node)
     {
-        yield return new ParseTreeNodeView<MdTokenType>(node.Text, node.Type, node.Children.Count == 0, node.Complete);
+        yield return new ParseTreeNodeView<MdTokenType>(
+            node.Text, node.Type, node.Children.Count == 0, node.Complete, node.InsideWord);
         var childNodes = node.Children.SelectMany(Traverse).ToList();
         foreach (var childNode in childNodes)
             yield return childNode;

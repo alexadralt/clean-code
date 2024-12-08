@@ -56,7 +56,7 @@ public class MdParser(IParseTree<MdTokenType> parseTree) : IParser<MdTokenType, 
                 if (parseTree.CurrentToken.TokenType == token.Type)
                     parseTree.CloseCurrentToken(true);
                 else
-                    parseTree.OpenToken(token.Type, token.Text);
+                    parseTree.OpenToken(token.Type, token.Text, true);
             }
             else
             {

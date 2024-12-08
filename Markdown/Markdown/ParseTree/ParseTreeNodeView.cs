@@ -6,4 +6,5 @@ public record ParseTreeNodeView<TTokenType>(
     ReadOnlyMemory<char> Text,
     TTokenType TokenType,
     bool Empty,
-    bool Complete) : BaseNodeView<TTokenType>;
+    bool Complete,
+    bool insideWord) : BaseNodeView<TTokenType>;
