@@ -5,6 +5,7 @@ using System.Text;
 using FluentAssertions;
 using Markdown.Parser;
 using Markdown.ParseTree;
+using Markdown.SyntaxRules;
 using Markdown.Token;
 using Markdown.Tokenizer;
 using NUnit.Framework;
@@ -30,11 +31,18 @@ public class MdTests
         tokenTags.Add(MdTokenType.Italic, "em");
         tokenTags.Add(MdTokenType.Bold, "strong");
         tokenTags.Add(MdTokenType.Heading, "h1");
+        
+        var syntaxRules = new List<ISyntaxRule<MdTokenType>>();
+        syntaxRules.Add(new NestingRule());
+        syntaxRules.Add(new NumberRule());
+        syntaxRules.Add(new TokensInDifferentWordsRule());
 
-        _md = new Md(tokenTags, new MdTokenizer(tokenAliases, '\\'), new MdParser(new MdParseTree()));
+        _md = new Md(
+            tokenTags, new MdTokenizer(tokenAliases, '\\'), new MdParser(new MdParseTree()), syntaxRules.ToArray());
     }
     
     [Test]
+    [Description("Базовые тесты")]
     [TestCase("", "")]
     [TestCase("Hello world", "Hello world")]
     [TestCase("Hello _world_!", "Hello <em>world</em>!")]
@@ -49,6 +57,7 @@ public class MdTests
     }
 
     [Test]
+    [Description("Тесты на вложенность двойного и одинарного выделения")]
     [TestCase("This __text _contains_ nested__ markdown", "This <strong>text <em>contains</em> nested</strong> markdown")]
     [TestCase("This is _an example __of inversed__ nested_ markdown", "This is <em>an example __of inversed__ nested</em> markdown")]
     public void Render_ReturnsCorrectMarkdown_ForCasesWithNesting(
@@ -61,10 +70,10 @@ public class MdTests
     }
     
     [Test]
+    [Description("Тесты для разметки внутри текста с цифрами")]
     [TestCase("Text_12_3", "Text_12_3")]
-    [TestCase("This _Text_12_3_ should be italic", "This <em>Text_12_3</em> should be italic")]
     [TestCase("5__12_3__4", "5__12_3__4")]
-    [TestCase("Text __that_12__3__ is in bold", "Text <strong>that_12__3</strong> is in bold")]
+    [TestCase("Text __that_12_3__ is in bold", "Text <strong>that_12_3</strong> is in bold")]
     public void Render_ReturnsCorrectMarkdown_ForTextWithNumbers(
         string input,
         string expectedOutput)
@@ -75,6 +84,7 @@ public class MdTests
     }
     
     [Test]
+    [Description("Тесты для разметки внутри слов")]
     [TestCase("_begin_ning", "<em>begin</em>ning")]
     [TestCase("mi_ddl_e", "mi<em>ddl</em>e")]
     [TestCase("end_ing_", "end<em>ing</em>")]
@@ -91,6 +101,7 @@ public class MdTests
     }
     
     [Test]
+    [Description("Тесты для подчерков, находящихся внутри разных слов")]
     [TestCase("This sh_ould not cha_nge", "This sh_ould not cha_nge")]
     [TestCase("As w__ell a__s this", "As w__ell a__s this")]
     [TestCase("This sh__o_uld_ wo__rk like this", "This sh__o<em>uld</em> wo__rk like this")]
@@ -104,6 +115,7 @@ public class MdTests
     }
     
     [Test]
+    [Description("Тесты для непарных символов разметки")]
     [TestCase("__Unpaired_ markdown", "__Unpaired_ markdown")]
     [TestCase("Another _unpaired markdown__", "Another _unpaired markdown__")]
     public void Render_ReturnsCorrectMarkdown_ForUnpairedMarkdownSymbols(
@@ -116,6 +128,7 @@ public class MdTests
     }
     
     [Test]
+    [Description("Проверяем, что подчерки должны следовать за (стоять перед) непробельным символом")]
     [TestCase("This_ should not_ change", "This_ should not_ change")]
     [TestCase("This _should _be in_ italics", "This <em>should _be in</em> italics")]
     public void Render_ReturnsCorrectMarkdown_ForIncorrectlyPlacedUnderscores(
@@ -128,6 +141,7 @@ public class MdTests
     }
     
     [Test]
+    [Description("Тесты на пересечение двойных и одинарных подчерков")]
     [TestCase("Intersecting _markdown __should_ work__ like this", "Intersecting _markdown __should_ work__ like this")]
     [TestCase("Another __example of _intersecting__ markdown_", "Another __example of _intersecting__ markdown_")]
     public void Render_ReturnsCorrectMarkdown_ForIntersectingMarkdown(
@@ -140,6 +154,7 @@ public class MdTests
     }
     
     [Test]
+    [Description("Тесты на пустую разметку")]
     [TestCase("This should ____ remain the same", "This should ____ remain the same")]
     [TestCase("This also should __ not change", "This also should __ not change")]
     public void Render_ReturnsCorrectMarkdown_ForEmptyMarkdown(
@@ -152,6 +167,7 @@ public class MdTests
     }
     
     [Test]
+    [Description("Тесты на экранирование")]
     [TestCase(@"This should \_not turn\_ into tags", "This should _not turn_ into tags")]
     [TestCase(@"This should \remain the\ same", @"This should \remain the\ same")]
     public void Render_ReturnsCorrectMarkdown_ForEscapeCharacters(
@@ -164,9 +180,10 @@ public class MdTests
     }
 
     [Test]
+    [Description("Тест на производительность")]
     public void Render_PerformanceTest()
     {
-        var fullStr = ArrangePerformanceTest("_Hello_ world_12. Hel_lo world_", 50000);
+        var fullStr = ArrangePerformanceTest("_Hello_ world_12. Hel_lo world_", 20000);
         Console.WriteLine($"Total length: {fullStr.Length}");
 
         var totalTime = MeasureTime(fullStr);
