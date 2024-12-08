@@ -11,18 +11,20 @@ namespace Markdown;
 public class Md(
     Dictionary<MdTokenType, string> tokenTags,
     ITokenizer<MdTokenType, MdToken> tokenizer,
-    IParser<MdTokenType, MdToken> parser) : IRenderer
+    IParser<MdTokenType, MdToken> parser,
+    ISyntaxRule<MdTokenType>[] syntaxRules) : IRenderer
 {
     public string Render(string input)
     {
         var tokens = tokenizer.Tokenize(input.AsMemory());
         var parseTree = parser.Parse(tokens);
-        var syntaxTree = MdAbstractSyntaxTree
-            .FromParseTree(parseTree)
-            .AddRule(new NestingRule())
-            .ApplyRules();
+        var syntaxTree = MdAbstractSyntaxTree.FromParseTree(parseTree);
+
+        foreach (var syntaxRule in syntaxRules)
+            syntaxTree.AddRule(syntaxRule);
         
         return syntaxTree
+            .ApplyRules()
             .Traverse()
             .Aggregate(new StringBuilder(),
                 (sb, node) => ProcessNode(node, sb))

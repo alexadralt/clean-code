@@ -116,6 +116,7 @@ public class MdAbstractSyntaxTree : IAbstractSyntaxTree<MdTokenType>
                 (current, rule) => rule.Apply(current));
         _root = (Node) syntaxTree;
         _current = _root;
+        _rules = ImmutableList<ISyntaxRule<MdTokenType>>.Empty;
         return this;
     }
 }

@@ -14,7 +14,7 @@ public class MdTokenizer(Dictionary<string, MdTokenType> tokenAliases, char esca
         var foundPlainText = false;
         var plainTextStart = 0;
         var increment = 1;
-        for (var i = start; i < length; )
+        for (var i = start; i < start + length; )
         {
             if (escapeCharacter == str![i] && i + 1 < str.Length)
             {
