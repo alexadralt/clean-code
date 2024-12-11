@@ -21,24 +21,7 @@ public class MdTests
     [SetUp]
     public void SetUp()
     {
-        var tokenAliases = new Dictionary<string, MdTokenType>();
-        tokenAliases.Add("_", MdTokenType.Italic);
-        tokenAliases.Add("__", MdTokenType.Bold);
-        tokenAliases.Add("# ", MdTokenType.Heading);
-        tokenAliases.Add("\n", MdTokenType.Line);
-
-        var tokenTags = new Dictionary<MdTokenType, string>();
-        tokenTags.Add(MdTokenType.Italic, "em");
-        tokenTags.Add(MdTokenType.Bold, "strong");
-        tokenTags.Add(MdTokenType.Heading, "h1");
-        
-        var syntaxRules = new List<ISyntaxRule<MdTokenType>>();
-        syntaxRules.Add(new NestingRule());
-        syntaxRules.Add(new NumberRule());
-        syntaxRules.Add(new TokensInDifferentWordsRule());
-
-        _md = new Md(
-            tokenTags, new MdTokenizer(tokenAliases, '\\'), new MdParser(new MdParseTree()), syntaxRules.ToArray());
+        _md = DefaultMdFactory.CreateMd();
     }
     
     [Test]
