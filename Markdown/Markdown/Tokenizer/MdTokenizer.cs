@@ -3,8 +3,25 @@ using Markdown.Token;
 
 namespace Markdown.Tokenizer;
 
-public class MdTokenizer(Dictionary<string, MdTokenType> tokenAliases, char escapeCharacter) : ITokenizer<MdTokenType, MdToken>
+public class MdTokenizer(
+    Dictionary<string, MdTokenType> tokenAliases,
+    char escapeCharacter,
+    char[] wordDelimiters) : ITokenizer<MdTokenType, MdToken>
 {
+    private class TokenInfo
+    {
+        public TokenInfo(MdTokenType tokenType, string tokenAlias, MdTokenBehaviour tokenBehaviour)
+        {
+            TokenType = tokenType;
+            TokenAlias = tokenAlias;
+            TokenBehaviour = tokenBehaviour;
+        }
+
+        public MdTokenType TokenType { get; set; }
+        public string TokenAlias { get; set; }
+        public MdTokenBehaviour TokenBehaviour { get; set; }
+    }
+    
     public IEnumerable<MdToken> Tokenize(ReadOnlyMemory<char> input)
     {
         ArgumentExceptionHelpers.ThrowIfFalse(
@@ -18,7 +35,7 @@ public class MdTokenizer(Dictionary<string, MdTokenType> tokenAliases, char esca
         {
             if (escapeCharacter == str![i] && i + 1 < str.Length)
             {
-                if (TryMatchTokenAliases(str, i + 1, out _, out _, out _))
+                if (TryMatchTokenAliases(str, i + 1, out _))
                 {
                     increment = 2;
                     yield return new MdToken(MdTokenType.PlainText, MdTokenBehaviour.Undefined,
@@ -27,15 +44,16 @@ public class MdTokenizer(Dictionary<string, MdTokenType> tokenAliases, char esca
                     foundPlainText = false;
                 }
             }
-            else if (TryMatchTokenAliases(str, i, out var tokenType, out var tokenAlias, out var tokenBehaviour))
+            else if (TryMatchTokenAliases(str, i, out var tokenInfo))
             {
-                increment = tokenAlias.Length;
+                increment = tokenInfo.TokenAlias.Length;
                 
                 if (foundPlainText)
                     yield return new MdToken(MdTokenType.PlainText, MdTokenBehaviour.Undefined,
                         input.Slice(plainTextStart, i - plainTextStart));
                 
-                yield return new MdToken(tokenType, tokenBehaviour, input.Slice(i, tokenAlias.Length));
+                yield return new MdToken(
+                    tokenInfo.TokenType, tokenInfo.TokenBehaviour, input.Slice(i, tokenInfo.TokenAlias.Length));
                 
                 foundPlainText = false;
             }
@@ -59,9 +77,7 @@ public class MdTokenizer(Dictionary<string, MdTokenType> tokenAliases, char esca
     private bool TryMatchTokenAliases(
         string input,
         int index,
-        out MdTokenType mdTokenType,
-        out string tokenAlias,
-        out MdTokenBehaviour tokenBehaviour)
+        out TokenInfo tokenInfo)
     {
         var matchedClosingToken = false;
         var mathcedOpeningToken = false;
@@ -80,35 +96,29 @@ public class MdTokenizer(Dictionary<string, MdTokenType> tokenAliases, char esca
             var (alias, type, behaviour) = openingTokenAlias.Length > closingTokenAlias.Length
                 ? (openingTokenAlias, openingTokenType, MdTokenBehaviour.Opening)
                 : (closingTokenAlias, closingTokenType, MdTokenBehaviour.Closing);
-            
+
+            MdTokenBehaviour tokenBehaviour;
             if (IsInsideAWord(input, index, alias))
                 tokenBehaviour = MdTokenBehaviour.InsideAWord;
             else
                 tokenBehaviour = behaviour;
-            tokenAlias = alias;
-            mdTokenType = type;
+            tokenInfo = new TokenInfo(type, alias, tokenBehaviour);
             return true;
         }
-
+        
         if (mathcedOpeningToken)
         {
-            tokenBehaviour = MdTokenBehaviour.Opening;
-            tokenAlias = openingTokenAlias;
-            mdTokenType = openingTokenType;
+            tokenInfo = new TokenInfo(openingTokenType, openingTokenAlias, MdTokenBehaviour.Opening);
             return true;
         }
 
         if (matchedClosingToken)
         {
-            tokenBehaviour = MdTokenBehaviour.Closing;
-            tokenAlias = closingTokenAlias;
-            mdTokenType = closingTokenType;
+            tokenInfo = new TokenInfo(closingTokenType, closingTokenAlias, MdTokenBehaviour.Closing);
             return true;
         }
-        
-        tokenBehaviour = MdTokenBehaviour.Undefined;
-        tokenAlias = String.Empty;
-        mdTokenType = MdTokenType.PlainText;
+
+        tokenInfo = null;
         return false;
     }
     
@@ -136,8 +146,7 @@ public class MdTokenizer(Dictionary<string, MdTokenType> tokenAliases, char esca
 
     private bool IsWordDelimiter(char c)
     {
-        return c is ' ' or '\t' or '\n' or '\r' or ',' or '.'
-            or '!' or '?';
+        return wordDelimiters.Contains(c);
     }
 
     private bool IsInsideAWord(string input, int index, string alias)
