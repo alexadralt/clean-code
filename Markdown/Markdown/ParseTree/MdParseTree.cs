@@ -29,15 +29,15 @@ public class MdParseTree : IParseTree<MdTokenType>
         public List<Node> Children { get; set; }
         public Node? Parent { get; set; }
     }
+
+    private readonly Node _root;
+    private Node _current;
     
     public MdParseTree()
     {
         _root = new Node(MdTokenType.Document, true);
         _current = _root;
     }
-
-    private readonly Node _root;
-    private Node _current;
 
     public ParseTreeNodeView<MdTokenType> CurrentToken =>
         new(_current.Text, _current.Type, _current.Children.Count == 0, _current.Complete, _current.InsideWord);
