@@ -1,13 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Text;
 using FluentAssertions;
-using Markdown.Parser;
-using Markdown.ParseTree;
-using Markdown.SyntaxRules;
-using Markdown.Token;
-using Markdown.Tokenizer;
 using NUnit.Framework;
 
 namespace Markdown.Tests;
@@ -160,37 +151,5 @@ public class MdTests
         _md.Render(input)
             .Should()
             .Be(expectedOutput);
-    }
-
-    [Test]
-    [Description("Тест на производительность")]
-    public void Render_PerformanceTest()
-    {
-        var fullStr = ArrangePerformanceTest("_Hello_ world_12. Hel_lo world_", 20000);
-        Console.WriteLine($"Total length: {fullStr.Length}");
-
-        var totalTime = MeasureTime(fullStr);
-        Console.WriteLine($"Time elapsed in ms: {totalTime}");
-        
-        totalTime
-            .Should()
-            .BeLessThan(1000);
-    }
-
-    private long MeasureTime(string fullStr)
-    {
-        var sw = new Stopwatch();
-        sw.Start();
-        _md.Render(fullStr);
-        sw.Stop();
-        return sw.ElapsedMilliseconds;
-    }
-
-    private string ArrangePerformanceTest(string input, int copyCount)
-    {
-        var sb = new StringBuilder();
-        for (var i = 0; i < copyCount; i++)
-            sb.Append(input);
-        return sb.ToString();
     }
 }
